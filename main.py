@@ -18,7 +18,7 @@ async def start(update, context):
 
 
 def main():
-    application = Application.builder().token('6789438153:AAGGlePMgoZs_77sU0t0pogs4tK3XwsOVEE').build()
+    application = Application.builder().token('TOKEN').build()
     application.add_handler(CommandHandler("start", start))
 
     application.run_polling()
