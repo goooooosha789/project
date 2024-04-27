@@ -1,0 +1,3 @@
+python-telegram-bot==21.1.1
+SQLAlchemy==2.0.27
+yandex_music==2.2.0
