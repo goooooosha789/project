@@ -22,6 +22,8 @@ start_scheme = [['Файл'], ['Текст'], ['Список избранных'
 start_keyboard = ReplyKeyboardMarkup(start_scheme, resize_keyboard=True)
 final_scheme = [['Назад'], ['Добавить в избранное']]
 final_keyboard = ReplyKeyboardMarkup(final_scheme, resize_keyboard=True)
+favorites_scheme = [['Назад'], ['Удалить']]
+favorites_keyboard = ReplyKeyboardMarkup(favorites_scheme, resize_keyboard=True)
 
 
 async def start(update, context):
@@ -69,9 +71,13 @@ async def found_text(update, context):
         text.append(f'Лучший результат: {best_result_text}\n')
         user_id = update.effective_user.id
         user = db_sess.query(User).filter(User.id == user_id).first()
-        user.last_search = best_result_text
+        im = search_result.best.result.cover_uri
+        im = im[:-2] + '200x200'
+        user.last_search = f'{best_result_text}___{im}'
         db_sess.commit()
-        await update.message.reply_text('\n'.join(text), reply_markup=final_keyboard)
+        await context.bot.send_photo(chat_id=update.message.chat_id,
+                                     photo=f'https://{im}')
+        await update.message.reply_text('\n'.join(text) + user.last_search, reply_markup=final_keyboard)
 
         return 3
     else:
@@ -80,9 +86,9 @@ async def found_text(update, context):
 
 
 async def active_audio(update, context):
-    await update.message.reply_text('Ввод', reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text('Извините, функция не доступна в данный момент', reply_markup=start_keyboard)
 
-    return 2
+    return ConversationHandler.END
 
 
 async def find_audio(update, context):
@@ -97,7 +103,11 @@ async def final(update, context):
     if not user.favorites:
         user.favorites = user.last_search
     else:
-        user.favorites = f'{user.favorites}, {user.last_search}'
+        if user.last_search not in user.favorites:
+            user.favorites = f'{user.favorites}, {user.last_search}'
+        else:
+            await update.message.reply_text(f'Уже есть в избранных', reply_markup=start_keyboard)
+            return ConversationHandler.END
     user.last_search = None
     db_sess.commit()
     await update.message.reply_text(f'Добавлено в избранное', reply_markup=start_keyboard)
@@ -114,16 +124,53 @@ async def favorites(update, context):
     user = db_sess.query(User).filter(User.id == user_id).first()
     if not user.favorites:
         await update.message.reply_text('В избранном ничего нет', reply_markup=start_keyboard)
-
+        return ConversationHandler.END
     else:
         sp = user.favorites.split(', ')
         for i in range(len(sp)):
-            await update.message.reply_text(f'{i + 1}. {sp[i]}', reply_markup=start_keyboard)
+            j = sp[i].split('___')
+            await update.message.reply_text(f'{i + 1} {j[0]}', reply_markup=start_keyboard)
+            await context.bot.send_photo(chat_id=update.message.chat_id,
+                                         photo=j[1], reply_markup=favorites_keyboard)
+        return 4
+
+
+async def delete_active(update, context):
+    await update.message.reply_text(text='Введите номера для удаления через ", " для удаления',
+                                    reply_markup=ReplyKeyboardRemove())
+    return 5
+
+
+async def delete(update, context):
+    user_id = update.effective_user.id
+    user = db_sess.query(User).filter(User.id == user_id).first()
+    input_text = update.message.text
+    sp = user.favorites
+    sp = sp.split(',')
+    input_text = input_text.split(',')
+    new_input = []
+    try:
+        for i in input_text:
+            new_input.append(int(i))
+    except ValueError:
+        await update.message.reply_text('Неверный ввод')
+        return 5
+    await update.message.reply_text(new_input)
+    new_input.sort(reverse=True)
+    try:
+        for i in new_input:
+            sp.pop(i - 1)
+    except IndexError:
+        await update.message.reply_text('Неверный номер')
+        return 5
+    user.favorites = ', '.join(sp)
+    db_sess.commit()
+    await update.message.reply_text('Удалено', reply_markup=start_keyboard)
     return ConversationHandler.END
 
 
 def main():
-    application = Application.builder().token('6789438153:AAGGlePMgoZs_77sU0t0pogs4tK3XwsOVEE').build()
+    application = Application.builder().token('TOKEN').build()
     application.add_handler(CommandHandler("start", start))
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Text(['Текст']), active_text),
@@ -132,7 +179,9 @@ def main():
         states={
             1: [MessageHandler(filters.TEXT, found_text)],
             2: [MessageHandler(filters.AUDIO, find_audio)],
-            3: [MessageHandler(filters.Text(['Добавить в избранное']), final)]
+            3: [MessageHandler(filters.Text(['Добавить в избранное']), final)],
+            4: [MessageHandler(filters.Text(['Удалить']), delete_active)],
+            5: [MessageHandler(filters.TEXT, delete)]
         },
         fallbacks=[MessageHandler(filters.Text(['Назад']), back)]
     )
