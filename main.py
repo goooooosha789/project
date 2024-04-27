@@ -169,8 +169,12 @@ async def delete(update, context):
     return ConversationHandler.END
 
 
+with open('TOKEN') as f:
+    TOKEN = f.read()
+
+
 def main():
-    application = Application.builder().token('TOKEN').build()
+    application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Text(['Текст']), active_text),
